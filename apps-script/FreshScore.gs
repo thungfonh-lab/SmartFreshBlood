@@ -1,0 +1,35 @@
+/**
+ * Fresh Score & Expiry — ตรรกะเดียวกับ frontend/src/lib/freshScore.ts
+ */
+
+var MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function atMidnight(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function parseIsoDate(iso) {
+  var p = String(iso).slice(0, 10).split("-");
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+}
+
+function addDaysIso(iso, days) {
+  var d = parseIsoDate(iso);
+  d.setDate(d.getDate() + days);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+/** วันคงเหลือก่อนหมดอายุ (0 = วันนี้, ติดลบ = เลยแล้ว) */
+function daysUntilExpiry(expiryIso) {
+  return Math.round((atMidnight(parseIsoDate(expiryIso)).getTime() - atMidnight(new Date()).getTime()) / MS_PER_DAY);
+}
+
+/** Fresh Score 0–100 */
+function computeFreshScore(collectIso, expiryIso) {
+  var total = Math.max(
+    1,
+    Math.round((atMidnight(parseIsoDate(expiryIso)).getTime() - atMidnight(parseIsoDate(collectIso)).getTime()) / MS_PER_DAY)
+  );
+  var remaining = daysUntilExpiry(expiryIso);
+  return Math.min(100, Math.max(0, Math.round((remaining / total) * 100)));
+}
