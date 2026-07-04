@@ -1,7 +1,7 @@
 export const BLOOD_GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"] as const;
 export type BloodGroup = (typeof BLOOD_GROUPS)[number];
 
-export type UnitStatus = "AVAILABLE" | "ISSUED" | "EXPIRED" | "DESTROYED";
+export type UnitStatus = "AVAILABLE" | "ISSUED" | "EXPIRED" | "DESTROYED" | "RETURNED";
 
 export type IssueType = "GENERAL" | "THALASSEMIA";
 
@@ -76,4 +76,80 @@ export interface ApiEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// ---------- Phase 2 ----------
+
+export interface Patient {
+  patientId: string;
+  hn: string;
+  name: string;
+  bloodGroup: BloodGroup;
+  unitsPerVisit: number;
+  frequencyDays: number;
+  note: string;
+  createdAt: string;
+}
+
+export type ApptStatus = "PLANNED" | "COMPLETED" | "CANCELLED";
+export type RiskLevel = "READY" | "RISK" | "CRITICAL";
+
+export interface Appointment {
+  apptId: string;
+  patientId: string;
+  patientName: string;
+  hn: string;
+  bloodGroup: BloodGroup | "";
+  apptDate: string;
+  unitsNeeded: number;
+  status: ApptStatus;
+  freshAvailable: number;
+  totalAvailable: number;
+  readiness: number; // 0–100
+  riskLevel: RiskLevel;
+}
+
+export interface RequestItem {
+  bloodGroup: BloodGroup;
+  component: string;
+  units: number;
+}
+
+export interface BloodRequestDoc {
+  requestId: string;
+  requestNo: string;
+  requestDate: string;
+  requestedTo: string;
+  requestedBy: string;
+  note: string;
+  items: RequestItem[];
+  status: string;
+  createdAt: string;
+}
+
+export interface HospitalConfig {
+  hospitalName: string;
+  hospitalAddress: string;
+}
+
+export type ReportType = "stock" | "receive" | "issue" | "destroy";
+
+export interface DestroyLogRow {
+  logId: string;
+  unitId: string;
+  bloodGroup: BloodGroup;
+  volumeCc: number;
+  action: "DESTROY" | "RETURN";
+  reason: string;
+  at: string;
+  by: string;
+}
+
+export interface ReportData {
+  type: ReportType;
+  from?: string;
+  to?: string;
+  generatedAt: string;
+  dashboard?: DashboardData; // type=stock
+  rows?: BloodUnit[] | IssueRecord[] | DestroyLogRow[]; // type=receive|issue|destroy
 }

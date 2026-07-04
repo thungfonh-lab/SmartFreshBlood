@@ -1,0 +1,198 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { getRepository } from "@/lib/repository";
+import type { BloodGroup, BloodRequestDoc, HospitalConfig, RequestItem } from "@/lib/types";
+import { BLOOD_GROUPS } from "@/lib/types";
+import { Card, EmptyState, ErrorBox, PageTitle, Spinner } from "@/components/ui";
+import { DocFooter, DocHeader, DocTable, PrintButton, SignatureBlock } from "@/components/FormalDoc";
+
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100";
+
+export default function RequestsPage() {
+  const [requests, setRequests] = useState<BloodRequestDoc[] | null>(null);
+  const [config, setConfig] = useState<HospitalConfig>({ hospitalName: "", hospitalAddress: "" });
+  const [error, setError] = useState("");
+  const [viewing, setViewing] = useState<BloodRequestDoc | null>(null);
+
+  // ฟอร์มสร้างใบขอเลือด
+  const [showForm, setShowForm] = useState(false);
+  const [items, setItems] = useState<RequestItem[]>([{ bloodGroup: "O+", component: "PRC", units: 2 }]);
+  const [requestedTo, setRequestedTo] = useState("ภาคบริการโลหิตแห่งชาติ");
+  const [requestedBy, setRequestedBy] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(() => {
+    Promise.all([getRepository().getRequests(), getRepository().getConfig()])
+      .then(([reqs, cfg]) => {
+        setRequests(reqs);
+        setConfig(cfg);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(load, [load]);
+
+  function setItem(i: number, patch: Partial<RequestItem>) {
+    setItems((prev) => prev.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!requestedBy.trim()) {
+      setError("กรุณาระบุชื่อผู้ขอ");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const doc = await getRepository().createRequest({
+        items,
+        requestedTo: requestedTo.trim(),
+        requestedBy: requestedBy.trim(),
+        note: note.trim(),
+      });
+      setShowForm(false);
+      setViewing(doc); // เปิดเอกสารทันทีเพื่อพิมพ์
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "สร้างใบขอเลือดไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ---------- มุมมองเอกสารทางการ ----------
+  if (viewing) {
+    const totalUnits = viewing.items.reduce((s, it) => s + it.units, 0);
+    return (
+      <div className="space-y-4">
+        <button onClick={() => setViewing(null)} className="no-print text-sm font-semibold text-red-600">
+          ‹ กลับรายการใบขอเลือด
+        </button>
+        <div className="formal-doc rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <DocHeader
+            hospitalName={config.hospitalName}
+            hospitalAddress={config.hospitalAddress}
+            title="ใบขอสนับสนุนโลหิต (Blood Request Form)"
+            docNo={viewing.requestNo}
+            docDate={viewing.requestDate}
+          />
+          <p className="mb-1 text-sm">เรียน {viewing.requestedTo || "-"}</p>
+          <p className="mb-4 indent-8 text-sm">
+            ด้วยหน่วยงานมีความประสงค์ขอรับการสนับสนุนโลหิตเพื่อใช้ในการรักษาพยาบาลผู้ป่วย โดยมีรายการดังต่อไปนี้
+          </p>
+          <DocTable
+            headers={["ลำดับ", "หมู่โลหิต", "ชนิดส่วนประกอบ", "จำนวน (ยูนิต)"]}
+            rows={viewing.items.map((it, i) => [i + 1, it.bloodGroup, it.component, it.units])}
+          />
+          <p className="mt-2 text-right text-sm font-semibold">รวมทั้งสิ้น {totalUnits} ยูนิต</p>
+          {viewing.note && <p className="mt-3 text-sm">หมายเหตุ: {viewing.note}</p>}
+          <p className="mt-4 indent-8 text-sm">จึงเรียนมาเพื่อโปรดพิจารณาให้การสนับสนุน จักขอบคุณยิ่ง</p>
+          <SignatureBlock roles={["ผู้ขอสนับสนุนโลหิต", "หัวหน้าหน่วยงาน"]} />
+          <DocFooter generatedAt={viewing.createdAt} />
+        </div>
+        <PrintButton />
+      </div>
+    );
+  }
+
+  // ---------- รายการ + ฟอร์ม ----------
+  return (
+    <div className="space-y-4">
+      <PageTitle title="ใบขอเลือด" subtitle="สร้างใบขอสนับสนุนโลหิตรูปแบบทางการ พิมพ์/บันทึก PDF ได้" />
+
+      {error && <ErrorBox message={error} />}
+
+      <button onClick={() => setShowForm(!showForm)} className="w-full rounded-2xl bg-red-600 py-3 text-sm font-bold text-white shadow-sm">
+        + สร้างใบขอเลือดใหม่
+      </button>
+
+      {showForm && (
+        <Card>
+          <form onSubmit={submit} className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold">ขอไปยัง (หน่วยงาน)</label>
+              <input value={requestedTo} onChange={(e) => setRequestedTo(e.target.value)} className={inputClass} />
+            </div>
+
+            <label className="block text-sm font-semibold">รายการโลหิต</label>
+            {items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <select
+                  value={it.bloodGroup}
+                  onChange={(e) => setItem(i, { bloodGroup: e.target.value as BloodGroup })}
+                  className={`${inputClass} w-24`}
+                >
+                  {BLOOD_GROUPS.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+                <select value={it.component} onChange={(e) => setItem(i, { component: e.target.value })} className={inputClass}>
+                  <option value="PRC">PRC</option>
+                  <option value="LPRC">LPRC</option>
+                  <option value="FFP">FFP</option>
+                  <option value="PC">PC</option>
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={it.units}
+                  onChange={(e) => setItem(i, { units: Number(e.target.value) })}
+                  className={`${inputClass} w-20 text-center`}
+                />
+                {items.length > 1 && (
+                  <button type="button" onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))} className="text-red-500">
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setItems((prev) => [...prev, { bloodGroup: "O+", component: "PRC", units: 1 }])}
+              className="text-sm font-semibold text-red-600"
+            >
+              + เพิ่มรายการ
+            </button>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold">ผู้ขอ</label>
+              <input value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} placeholder="ชื่อเจ้าหน้าที่" className={inputClass} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold">หมายเหตุ (ถ้ามี)</label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
+            </div>
+            <button type="submit" disabled={saving} className="w-full rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+              {saving ? "กำลังบันทึก..." : "บันทึกและเปิดเอกสาร"}
+            </button>
+          </form>
+        </Card>
+      )}
+
+      {!requests && !error && <Spinner />}
+      {requests && requests.length === 0 && <EmptyState message="ยังไม่มีใบขอเลือด" />}
+      <div className="space-y-2">
+        {requests?.map((r) => (
+          <button key={r.requestId} onClick={() => setViewing(r)} className="block w-full text-left">
+            <Card className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold">{r.requestNo}</p>
+                <p className="text-xs text-slate-500">
+                  {r.items.map((it) => `${it.bloodGroup} ${it.component}×${it.units}`).join(", ")} · ผู้ขอ {r.requestedBy}
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-slate-400">ดูเอกสาร ›</span>
+            </Card>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

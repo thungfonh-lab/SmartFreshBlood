@@ -1,13 +1,22 @@
 import { addDays, daysUntilExpiry, freshScore, toIsoDate } from "../freshScore";
 import type {
+  Appointment,
+  ApptStatus,
   BloodGroup,
+  BloodRequestDoc,
   BloodUnit,
   DashboardData,
+  DestroyLogRow,
   ExpiringData,
   GroupSummary,
+  HospitalConfig,
   IssueInput,
   IssueRecord,
+  Patient,
   ReceiveInput,
+  ReportData,
+  ReportType,
+  RequestItem,
 } from "../types";
 import { BLOOD_GROUPS } from "../types";
 import type { BloodRepository } from "./types";
@@ -178,6 +187,8 @@ export class MockRepository implements BloodRepository {
       };
     });
     this.persist();
+    this.extra().issueLog.push(...records);
+    this.persistExtra();
     return records;
   }
 
@@ -192,10 +203,214 @@ export class MockRepository implements BloodRepository {
     };
   }
 
-  async destroy(unitIds: string[]): Promise<void> {
+  async destroy(unitIds: string[], reason: string, by: string): Promise<void> {
+    this.changeStatus(unitIds, "DESTROYED", "DESTROY", reason, by);
+  }
+
+  async returnUnits(unitIds: string[], reason: string, by: string): Promise<void> {
+    this.changeStatus(unitIds, "RETURNED", "RETURN", reason, by);
+  }
+
+  private changeStatus(unitIds: string[], status: BloodUnit["status"], action: "DESTROY" | "RETURN", reason: string, by: string) {
+    const now = new Date().toISOString();
     for (const u of this.all()) {
-      if (unitIds.includes(u.unitId) && u.status === "AVAILABLE") u.status = "DESTROYED";
+      if (unitIds.includes(u.unitId) && u.status === "AVAILABLE") {
+        u.status = status;
+        this.extra().destroyLog.push({
+          logId: `DL${Date.now()}${u.unitId}`,
+          unitId: u.unitId,
+          bloodGroup: u.bloodGroup,
+          volumeCc: u.volumeCc,
+          action,
+          reason,
+          at: now,
+          by,
+        });
+      }
     }
     this.persist();
+    this.persistExtra();
   }
+
+  // ---------- Phase 2 (mock) ----------
+
+  private extraData: MockExtra | null = null;
+
+  private extra(): MockExtra {
+    if (!this.extraData) this.extraData = loadExtra();
+    return this.extraData;
+  }
+
+  private persistExtra() {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(EXTRA_KEY, JSON.stringify(this.extra()));
+    }
+  }
+
+  async getPatients(): Promise<Patient[]> {
+    return [...this.extra().patients];
+  }
+
+  async savePatient(input: Partial<Patient>): Promise<Patient> {
+    const patients = this.extra().patients;
+    if (input.patientId) {
+      const p = patients.find((x) => x.patientId === input.patientId);
+      if (!p) throw new Error("ไม่พบผู้ป่วย");
+      Object.assign(p, input);
+      this.persistExtra();
+      return p;
+    }
+    if (patients.some((x) => x.hn === input.hn)) throw new Error(`HN ${input.hn} มีในทะเบียนแล้ว`);
+    const created: Patient = {
+      patientId: `P${Date.now()}`,
+      hn: input.hn ?? "",
+      name: input.name ?? "",
+      bloodGroup: (input.bloodGroup ?? "O+") as BloodGroup,
+      unitsPerVisit: input.unitsPerVisit ?? 1,
+      frequencyDays: input.frequencyDays ?? 28,
+      note: input.note ?? "",
+      createdAt: new Date().toISOString(),
+    };
+    patients.push(created);
+    this.persistExtra();
+    return created;
+  }
+
+  async getAppointments(): Promise<Appointment[]> {
+    const avail = this.available();
+    const freshCount = (g: string) => avail.filter((u) => u.bloodGroup === g && freshScore(u) >= 70).length;
+    const totalCount = (g: string) => avail.filter((u) => u.bloodGroup === g).length;
+    return this.extra()
+      .appointments.filter((a) => a.status === "PLANNED")
+      .map((a) => {
+        const p = this.extra().patients.find((x) => x.patientId === a.patientId);
+        const fresh = p ? freshCount(p.bloodGroup) : 0;
+        const readiness = Math.min(100, Math.round((fresh / a.unitsNeeded) * 100));
+        return {
+          apptId: a.apptId,
+          patientId: a.patientId,
+          patientName: p?.name ?? "(ไม่พบผู้ป่วย)",
+          hn: p?.hn ?? "-",
+          bloodGroup: p?.bloodGroup ?? "",
+          apptDate: a.apptDate,
+          unitsNeeded: a.unitsNeeded,
+          status: a.status,
+          freshAvailable: fresh,
+          totalAvailable: p ? totalCount(p.bloodGroup) : 0,
+          readiness,
+          riskLevel: readiness >= 100 ? "READY" : readiness >= 50 ? "RISK" : "CRITICAL",
+        } as Appointment;
+      })
+      .sort((a, b) => a.apptDate.localeCompare(b.apptDate));
+  }
+
+  async saveAppointment(input: { patientId: string; apptDate: string; unitsNeeded: number }): Promise<void> {
+    this.extra().appointments.push({
+      apptId: `AP${Date.now()}`,
+      patientId: input.patientId,
+      apptDate: input.apptDate,
+      unitsNeeded: input.unitsNeeded,
+      status: "PLANNED",
+    });
+    this.persistExtra();
+  }
+
+  async setAppointmentStatus(apptId: string, status: ApptStatus): Promise<void> {
+    const a = this.extra().appointments.find((x) => x.apptId === apptId);
+    if (a) a.status = status;
+    this.persistExtra();
+  }
+
+  async getRequests(): Promise<BloodRequestDoc[]> {
+    return [...this.extra().requests].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async createRequest(input: { items: RequestItem[]; requestedTo: string; requestedBy: string; note: string }): Promise<BloodRequestDoc> {
+    const today = todayIso();
+    const dateKey = today.replace(/-/g, "");
+    const count = this.extra().requests.filter((r) => r.requestNo.startsWith(`SFB-${dateKey}`)).length;
+    const doc: BloodRequestDoc = {
+      requestId: `RQ${Date.now()}`,
+      requestNo: `SFB-${dateKey}-${String(count + 1).padStart(3, "0")}`,
+      requestDate: today,
+      requestedTo: input.requestedTo,
+      requestedBy: input.requestedBy,
+      note: input.note,
+      items: input.items,
+      status: "PENDING",
+      createdAt: new Date().toISOString(),
+    };
+    this.extra().requests.push(doc);
+    this.persistExtra();
+    return doc;
+  }
+
+  async getReport(type: ReportType, from?: string, to?: string): Promise<ReportData> {
+    const inRange = (iso: string) => {
+      const d = iso.slice(0, 10);
+      return (!from || d >= from) && (!to || d <= to);
+    };
+    const generatedAt = new Date().toISOString();
+    if (type === "stock") return { type, generatedAt, dashboard: await this.getDashboard() };
+    if (type === "receive")
+      return { type, from, to, generatedAt, rows: this.all().filter((u) => inRange(u.receivedAt)) };
+    if (type === "issue") return { type, from, to, generatedAt, rows: this.extra().issueLog.filter((r) => inRange(r.issuedAt)) };
+    return { type, from, to, generatedAt, rows: this.extra().destroyLog.filter((r) => inRange(r.at)) };
+  }
+
+  async getConfig(): Promise<HospitalConfig> {
+    return { hospitalName: "โรงพยาบาลตัวอย่าง (โหมดทดสอบ)", hospitalAddress: "" };
+  }
+}
+
+const EXTRA_KEY = "sfb-mock-extra";
+
+interface MockAppt {
+  apptId: string;
+  patientId: string;
+  apptDate: string;
+  unitsNeeded: number;
+  status: ApptStatus;
+}
+
+interface MockExtra {
+  patients: Patient[];
+  appointments: MockAppt[];
+  requests: BloodRequestDoc[];
+  issueLog: IssueRecord[];
+  destroyLog: DestroyLogRow[];
+}
+
+function loadExtra(): MockExtra {
+  if (typeof window !== "undefined") {
+    const raw = window.localStorage.getItem(EXTRA_KEY);
+    if (raw) {
+      try {
+        return JSON.parse(raw) as MockExtra;
+      } catch {
+        // ใช้ค่าเริ่มต้น
+      }
+    }
+  }
+  const today = todayIso();
+  return {
+    patients: [
+      {
+        patientId: "P0001",
+        hn: "12345",
+        name: "ด.ช. ตัวอย่าง ใจดี",
+        bloodGroup: "O+",
+        unitsPerVisit: 2,
+        frequencyDays: 28,
+        note: "",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    appointments: [
+      { apptId: "AP0001", patientId: "P0001", apptDate: addDays(today, 5), unitsNeeded: 2, status: "PLANNED" },
+    ],
+    requests: [],
+    issueLog: [],
+    destroyLog: [],
+  };
 }

@@ -1,4 +1,20 @@
-import type { BloodGroup, BloodUnit, DashboardData, ExpiringData, IssueInput, IssueRecord, ReceiveInput } from "../types";
+import type {
+  Appointment,
+  ApptStatus,
+  BloodGroup,
+  BloodRequestDoc,
+  BloodUnit,
+  DashboardData,
+  ExpiringData,
+  HospitalConfig,
+  IssueInput,
+  IssueRecord,
+  Patient,
+  ReceiveInput,
+  ReportData,
+  ReportType,
+  RequestItem,
+} from "../types";
 
 /**
  * Repository interface — Frontend เรียกผ่าน interface นี้เท่านั้น
@@ -11,4 +27,15 @@ export interface BloodRepository {
   issue(input: IssueInput): Promise<IssueRecord[]>;
   getExpiring(): Promise<ExpiringData>;
   destroy(unitIds: string[], reason: string, by: string): Promise<void>;
+  // Phase 2
+  returnUnits(unitIds: string[], reason: string, by: string): Promise<void>;
+  getPatients(): Promise<Patient[]>;
+  savePatient(input: Partial<Patient>): Promise<Patient>;
+  getAppointments(): Promise<Appointment[]>;
+  saveAppointment(input: { patientId: string; apptDate: string; unitsNeeded: number }): Promise<void>;
+  setAppointmentStatus(apptId: string, status: ApptStatus): Promise<void>;
+  getRequests(): Promise<BloodRequestDoc[]>;
+  createRequest(input: { items: RequestItem[]; requestedTo: string; requestedBy: string; note: string }): Promise<BloodRequestDoc>;
+  getReport(type: ReportType, from?: string, to?: string): Promise<ReportData>;
+  getConfig(): Promise<HospitalConfig>;
 }

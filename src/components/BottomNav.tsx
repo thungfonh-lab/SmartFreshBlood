@@ -6,18 +6,22 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "ภาพรวม", icon: "📊" },
   { href: "/receive", label: "รับเลือด", icon: "🩸" },
-  { href: "/inventory", label: "คลังเลือด", icon: "📦" },
   { href: "/issue", label: "จ่ายเลือด", icon: "🏥" },
-  { href: "/expiry", label: "หมดอายุ", icon: "⏰" },
+  { href: "/thalassemia", label: "ธาลัสฯ", icon: "🗓️" },
+  { href: "/menu", label: "เมนู", icon: "☰" },
 ];
+
+// หน้าที่อยู่ใต้เมนู — ให้แท็บเมนู active ด้วย
+const MENU_PAGES = ["/menu", "/inventory", "/expiry", "/requests", "/reports", "/destroy"];
 
 export default function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur print:hidden">
       <div className="mx-auto grid max-w-2xl grid-cols-5">
         {TABS.map((tab) => {
-          const active = pathname === tab.href;
+          const active =
+            tab.href === "/menu" ? MENU_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/")) : pathname === tab.href;
           return (
             <Link
               key={tab.href}
