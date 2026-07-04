@@ -57,6 +57,17 @@ function handleRequest(e, body) {
       }
       case "config":
         return jsonResponse({ success: true, data: cachedJson("config", getPublicConfig) });
+      case "search": {
+        var sq = e.parameter.q || "";
+        return jsonResponse({
+          success: true,
+          data: cachedJson("search:" + sq, function () {
+            return searchAll(sq);
+          }),
+        });
+      }
+      case "configAll":
+        return jsonResponse({ success: true, data: getAllConfigMasked() });
 
       // ---------- POST (เขียนข้อมูล + bump cache version) ----------
       case "receive":
@@ -75,6 +86,8 @@ function handleRequest(e, body) {
         return writeAction(body, setAppointmentStatus);
       case "requestCreate":
         return writeAction(body, createRequest);
+      case "configSave":
+        return writeAction(body, saveConfigEntries);
 
       default:
         return jsonResponse({ success: false, error: "ไม่รู้จัก action: " + action });

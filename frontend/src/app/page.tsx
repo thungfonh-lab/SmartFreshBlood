@@ -43,7 +43,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="เลือดในคลัง" value={data.totalUnits} unit="ถุง" />
         <StatCard label="ปริมาณรวม" value={data.totalVolumeCc.toLocaleString()} unit="cc" />
         <StatCard
@@ -71,6 +71,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
       <Card>
         <h2 className="mb-3 text-sm font-bold">จำนวนถุงต่อกรุ๊ปเลือด</h2>
         <Bar
@@ -109,6 +110,7 @@ export default function DashboardPage() {
           />
         </div>
       </Card>
+      </div>
 
       <Card>
         <h2 className="mb-3 text-sm font-bold">สรุปรายกรุ๊ป</h2>

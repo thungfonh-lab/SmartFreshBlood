@@ -11,6 +11,63 @@ function getPublicConfig() {
   };
 }
 
+// ---------- System Config (ตั้งค่าผ่านหน้าระบบ) ----------
+
+var CONFIG_KEYS = [
+  "hospitalName",
+  "hospitalAddress",
+  "shelfLifeDays",
+  "criticalThreshold",
+  "freshThreshold",
+  "lineChannelToken",
+  "lineTargetId",
+  "notifyEmail",
+];
+var SECRET_KEYS = ["lineChannelToken"];
+var MASK_PREFIX = "••••";
+
+/** ค่าตั้งทั้งหมด — ค่าลับถูก mask ไม่ส่งตัวจริงออกไป */
+function getAllConfigMasked() {
+  var c = readConfig();
+  var out = {};
+  CONFIG_KEYS.forEach(function (key) {
+    var value = String(c[key] !== undefined ? c[key] : "");
+    if (SECRET_KEYS.indexOf(key) >= 0 && value) {
+      out[key] = MASK_PREFIX + value.slice(-4);
+    } else {
+      out[key] = value;
+    }
+  });
+  return out;
+}
+
+/** บันทึกค่าตั้ง (upsert ลงชีท Config) — ค่าที่ยังเป็น mask จะไม่ถูกเขียนทับ */
+function saveConfigEntries(input) {
+  if (!input.entries) throw new Error("ไม่มีข้อมูลค่าตั้ง");
+  var sheet = getSheet(SHEET_CONFIG);
+  var rows = readAll(SHEET_CONFIG, ["key", "value"]);
+  var rowByKey = {};
+  rows.forEach(function (r) {
+    rowByKey[String(r.key)] = r._row;
+  });
+
+  var changed = [];
+  CONFIG_KEYS.forEach(function (key) {
+    if (input.entries[key] === undefined) return;
+    var value = String(input.entries[key]);
+    if (SECRET_KEYS.indexOf(key) >= 0 && value.indexOf(MASK_PREFIX) === 0) return; // ไม่ได้แก้ค่าลับ
+    if (rowByKey[key]) {
+      sheet.getRange(rowByKey[key], 2).setValue(value);
+    } else {
+      sheet.appendRow([key, value]);
+    }
+    changed.push(key);
+  });
+
+  audit("CONFIG_SAVE", "แก้ไขค่าตั้ง: " + (changed.join(", ") || "-"), input.by || "");
+  return getAllConfigMasked();
+}
+
 function inDateRange(isoDateTime, from, to) {
   var d = String(isoDateTime).slice(0, 10);
   if (from && d < from) return false;

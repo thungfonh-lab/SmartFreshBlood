@@ -17,6 +17,8 @@ import type {
   ReportData,
   ReportType,
   RequestItem,
+  SearchResult,
+  SystemConfig,
 } from "../types";
 import { BLOOD_GROUPS } from "../types";
 import type { BloodRepository } from "./types";
@@ -359,7 +361,45 @@ export class MockRepository implements BloodRepository {
   }
 
   async getConfig(): Promise<HospitalConfig> {
-    return { hospitalName: "โรงพยาบาลตัวอย่าง (โหมดทดสอบ)", hospitalAddress: "" };
+    const c = this.extra().config ?? {};
+    return { hospitalName: c.hospitalName || "โรงพยาบาลตัวอย่าง (โหมดทดสอบ)", hospitalAddress: c.hospitalAddress || "" };
+  }
+
+  async search(q: string): Promise<SearchResult> {
+    const query = q.trim().toLowerCase();
+    if (query.length < 2) return { units: [], patients: [] };
+    const lastIssue = new Map(this.extra().issueLog.map((r) => [r.unitId, r]));
+    const units = this.all()
+      .filter((u) => u.unitId.toLowerCase().includes(query))
+      .slice(0, 30)
+      .map((u) => {
+        const issue = lastIssue.get(u.unitId);
+        return issue ? { ...u, issuedTo: issue.issuedTo, issuedAt: issue.issuedAt } : { ...u };
+      });
+    const patients = this.extra()
+      .patients.filter((p) => p.hn.toLowerCase().includes(query) || p.name.toLowerCase().includes(query))
+      .slice(0, 30);
+    return { units, patients };
+  }
+
+  async getAllConfig(): Promise<SystemConfig> {
+    return {
+      hospitalName: "โรงพยาบาลตัวอย่าง (โหมดทดสอบ)",
+      hospitalAddress: "",
+      shelfLifeDays: "35",
+      criticalThreshold: "3",
+      freshThreshold: "70",
+      lineChannelToken: "",
+      lineTargetId: "",
+      notifyEmail: "",
+      ...this.extra().config,
+    };
+  }
+
+  async saveConfig(entries: SystemConfig): Promise<SystemConfig> {
+    this.extra().config = { ...this.extra().config, ...entries };
+    this.persistExtra();
+    return this.getAllConfig();
   }
 }
 
@@ -379,6 +419,7 @@ interface MockExtra {
   requests: BloodRequestDoc[];
   issueLog: IssueRecord[];
   destroyLog: DestroyLogRow[];
+  config?: SystemConfig;
 }
 
 function loadExtra(): MockExtra {

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Thai, Sarabun } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import Sidebar from "@/components/Sidebar";
 
 const notoSansThai = Noto_Sans_Thai({
   variable: "--font-noto-thai",
@@ -41,7 +42,12 @@ export default function RootLayout({
   return (
     <html lang="th" className={`${notoSansThai.variable} ${sarabun.variable} h-full antialiased`}>
       <body className="min-h-full bg-slate-50 text-slate-900 print:bg-white">
-        <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 pt-4 pb-24 print:max-w-none print:p-0">{children}</main>
+        <Sidebar />
+        <div className="lg:pl-64 print:pl-0">
+          <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 pt-4 pb-24 lg:max-w-5xl lg:px-8 lg:pt-8 lg:pb-10 print:max-w-none print:p-0">
+            {children}
+          </main>
+        </div>
         <BottomNav />
       </body>
     </html>

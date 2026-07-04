@@ -16,6 +16,8 @@ import type {
   ReportData,
   ReportType,
   RequestItem,
+  SearchResult,
+  SystemConfig,
 } from "../types";
 import type { BloodRepository } from "./types";
 
@@ -110,5 +112,20 @@ export class GasRepository implements BloodRepository {
 
   getConfig(): Promise<HospitalConfig> {
     return cached("config", TTL_CONFIG, () => gasRequest<HospitalConfig>(this.baseUrl, "config"));
+  }
+
+  search(q: string): Promise<SearchResult> {
+    return cached(`search:${q}`, TTL, () => gasRequest<SearchResult>(this.baseUrl, "search", { params: { q } }));
+  }
+
+  getAllConfig(): Promise<SystemConfig> {
+    // ไม่ cache — หน้าตั้งค่าต้องเห็นค่าปัจจุบันเสมอ
+    return gasRequest<SystemConfig>(this.baseUrl, "configAll");
+  }
+
+  async saveConfig(entries: SystemConfig, by: string): Promise<SystemConfig> {
+    const result = await gasRequest<SystemConfig>(this.baseUrl, "configSave", { method: "POST", body: { entries, by } });
+    invalidate("config", "dashboard", "appointments"); // เกณฑ์ต่างๆ กระทบการคำนวณ
+    return result;
   }
 }

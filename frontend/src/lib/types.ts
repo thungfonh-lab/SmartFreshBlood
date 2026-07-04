@@ -145,6 +145,19 @@ export interface DestroyLogRow {
   by: string;
 }
 
+export interface SearchUnit extends BloodUnit {
+  issuedTo?: string;
+  issuedAt?: string;
+}
+
+export interface SearchResult {
+  units: SearchUnit[];
+  patients: Patient[];
+}
+
+/** ค่าตั้งระบบทั้งหมด (key → value) — ค่าลับถูก mask จากเซิร์ฟเวอร์ */
+export type SystemConfig = Record<string, string>;
+
 export interface ReportData {
   type: ReportType;
   from?: string;

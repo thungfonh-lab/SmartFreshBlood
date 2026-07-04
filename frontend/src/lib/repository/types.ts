@@ -14,6 +14,8 @@ import type {
   ReportData,
   ReportType,
   RequestItem,
+  SearchResult,
+  SystemConfig,
 } from "../types";
 
 /**
@@ -38,4 +40,7 @@ export interface BloodRepository {
   createRequest(input: { items: RequestItem[]; requestedTo: string; requestedBy: string; note: string }): Promise<BloodRequestDoc>;
   getReport(type: ReportType, from?: string, to?: string): Promise<ReportData>;
   getConfig(): Promise<HospitalConfig>;
+  search(q: string): Promise<SearchResult>;
+  getAllConfig(): Promise<SystemConfig>;
+  saveConfig(entries: SystemConfig, by: string): Promise<SystemConfig>;
 }

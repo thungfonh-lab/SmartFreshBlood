@@ -17,7 +17,7 @@ const MENU_PAGES = ["/menu", "/inventory", "/expiry", "/requests", "/reports", "
 export default function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur print:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden print:hidden">
       <div className="mx-auto grid max-w-2xl grid-cols-5">
         {TABS.map((tab) => {
           const active =

@@ -5,11 +5,13 @@ import { isMockMode } from "@/lib/repository";
 import { Card, PageTitle } from "@/components/ui";
 
 const MENU_ITEMS = [
+  { href: "/search", icon: "🔍", title: "ค้นหา", desc: "ค้นหาถุงเลือด ผู้ป่วย หรือ HN" },
   { href: "/inventory", icon: "📦", title: "คลังเลือด", desc: "รายการถุงเลือดทั้งหมด (FEFO)" },
   { href: "/expiry", icon: "⏰", title: "จัดการวันหมดอายุ", desc: "เฝ้าระวังเลือดหมดอายุ 0/3/7 วัน" },
   { href: "/requests", icon: "📄", title: "ใบขอเลือด", desc: "สร้างและพิมพ์ใบขอเลือด (ทางการ)" },
   { href: "/reports", icon: "📑", title: "รายงาน", desc: "รายงานทางการ พิมพ์/บันทึก PDF" },
   { href: "/destroy", icon: "🗑️", title: "ทำลาย / คืนเลือด", desc: "บันทึกการทำลายและคืนเลือดพร้อมเหตุผล" },
+  { href: "/settings", icon: "⚙️", title: "ตั้งค่าระบบ", desc: "ชื่อหน่วยงาน เกณฑ์คลัง และการแจ้งเตือน" },
 ];
 
 export default function MenuPage() {
