@@ -24,65 +24,58 @@ function handleRequest(e, body) {
   var action = (e.parameter && e.parameter.action) || "";
   try {
     switch (action) {
+      // ---------- GET (ผ่าน CacheService) ----------
       case "dashboard":
-        return jsonResponse({ success: true, data: getDashboard() });
-      case "inventory":
-        return jsonResponse({ success: true, data: getInventory(e.parameter.bloodGroup || null) });
-      case "expiring":
-        return jsonResponse({ success: true, data: getExpiring() });
-      case "receive":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: receiveBlood(body) });
-        });
-      case "issue":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: issueBlood(body) });
-        });
-      case "destroy":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: destroyUnits(body) });
-        });
-      case "return":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: returnUnits(body) });
-        });
-      case "patients":
-        return jsonResponse({ success: true, data: getPatients() });
-      case "patientSave":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: savePatient(body) });
-        });
-      case "appointments":
-        return jsonResponse({ success: true, data: getAppointments() });
-      case "appointmentSave":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: saveAppointment(body) });
-        });
-      case "appointmentStatus":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: setAppointmentStatus(body) });
-        });
-      case "requests":
-        return jsonResponse({ success: true, data: getRequests() });
-      case "requestCreate":
-        requireBody(body);
-        return withLock(function () {
-          return jsonResponse({ success: true, data: createRequest(body) });
-        });
-      case "report":
+        return jsonResponse({ success: true, data: cachedJson("dashboard", getDashboard) });
+      case "inventory": {
+        var group = e.parameter.bloodGroup || null;
         return jsonResponse({
           success: true,
-          data: getReport(e.parameter.type || "", e.parameter.from || "", e.parameter.to || ""),
+          data: cachedJson("inventory:" + (group || "ALL"), function () {
+            return getInventory(group);
+          }),
         });
+      }
+      case "expiring":
+        return jsonResponse({ success: true, data: cachedJson("expiring", getExpiring) });
+      case "patients":
+        return jsonResponse({ success: true, data: cachedJson("patients", getPatients) });
+      case "appointments":
+        return jsonResponse({ success: true, data: cachedJson("appointments", getAppointments) });
+      case "requests":
+        return jsonResponse({ success: true, data: cachedJson("requests", getRequests) });
+      case "report": {
+        var rType = e.parameter.type || "";
+        var rFrom = e.parameter.from || "";
+        var rTo = e.parameter.to || "";
+        return jsonResponse({
+          success: true,
+          data: cachedJson("report:" + rType + ":" + rFrom + ":" + rTo, function () {
+            return getReport(rType, rFrom, rTo);
+          }),
+        });
+      }
       case "config":
-        return jsonResponse({ success: true, data: getPublicConfig() });
+        return jsonResponse({ success: true, data: cachedJson("config", getPublicConfig) });
+
+      // ---------- POST (เขียนข้อมูล + bump cache version) ----------
+      case "receive":
+        return writeAction(body, receiveBlood);
+      case "issue":
+        return writeAction(body, issueBlood);
+      case "destroy":
+        return writeAction(body, destroyUnits);
+      case "return":
+        return writeAction(body, returnUnits);
+      case "patientSave":
+        return writeAction(body, savePatient);
+      case "appointmentSave":
+        return writeAction(body, saveAppointment);
+      case "appointmentStatus":
+        return writeAction(body, setAppointmentStatus);
+      case "requestCreate":
+        return writeAction(body, createRequest);
+
       default:
         return jsonResponse({ success: false, error: "ไม่รู้จัก action: " + action });
     }
@@ -94,6 +87,16 @@ function handleRequest(e, body) {
 
 function requireBody(body) {
   if (!body) throw new Error("action นี้ต้องเรียกแบบ POST พร้อม body");
+}
+
+/** รัน write operation ภายใต้ Lock แล้ว bump cache version */
+function writeAction(body, fn) {
+  requireBody(body);
+  return withLock(function () {
+    var data = fn(body);
+    bumpDataVersion();
+    return jsonResponse({ success: true, data: data });
+  });
 }
 
 /** ป้องกันเขียนชนกัน (Concurrency Control) */
