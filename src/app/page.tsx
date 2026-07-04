@@ -1,65 +1,144 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Bar, Doughnut } from "react-chartjs-2";
+import { getRepository, isMockMode } from "@/lib/repository";
+import type { DashboardData } from "@/lib/types";
+import { BloodGroupBadge, Card, ErrorBox, PageTitle, Spinner, StatCard } from "@/components/ui";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getRepository()
+      .getDashboard()
+      .then(setData)
+      .catch((e) => setError(e.message));
+  }, []);
+
+  if (error) return <ErrorBox message={error} />;
+  if (!data) return <Spinner />;
+
+  const groupLabels = data.groups.map((g) => g.bloodGroup);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="space-y-4">
+      <PageTitle title="Smart Fresh Blood" subtitle="ภาพรวมคลังเลือดวันนี้" />
+
+      {isMockMode() && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-center text-xs text-amber-700">
+          โหมดข้อมูลตัวอย่าง — ยังไม่ได้เชื่อมต่อ Google Sheets
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="เลือดในคลัง" value={data.totalUnits} unit="ถุง" />
+        <StatCard label="ปริมาณรวม" value={data.totalVolumeCc.toLocaleString()} unit="cc" />
+        <StatCard
+          label="Fresh Score เฉลี่ย"
+          value={data.avgFreshScore}
+          tone={data.avgFreshScore >= 70 ? "success" : data.avgFreshScore >= 40 ? "warning" : "danger"}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <StatCard label="หมดอายุใน 7 วัน" value={data.expiring7Days} unit="ถุง" tone={data.expiring7Days > 0 ? "warning" : "default"} />
+      </div>
+
+      {(data.expiringToday > 0 || data.criticalGroups.length > 0) && (
+        <Card className="border-red-200 bg-red-50">
+          <h2 className="mb-2 text-sm font-bold text-red-700">⚠️ ต้องดำเนินการ</h2>
+          <ul className="space-y-1 text-sm text-red-700">
+            {data.expiringToday > 0 && <li>• เลือดหมดอายุวันนี้ {data.expiringToday} ถุง — ไปที่หน้า “หมดอายุ”</li>}
+            {data.criticalGroups.length > 0 && (
+              <li className="flex flex-wrap items-center gap-1">
+                • สต็อกวิกฤต (Critical):
+                {data.criticalGroups.map((g) => (
+                  <BloodGroupBadge key={g} group={g} />
+                ))}
+              </li>
+            )}
+          </ul>
+        </Card>
+      )}
+
+      <Card>
+        <h2 className="mb-3 text-sm font-bold">จำนวนถุงต่อกรุ๊ปเลือด</h2>
+        <Bar
+          data={{
+            labels: groupLabels,
+            datasets: [
+              {
+                label: "ถุง",
+                data: data.groups.map((g) => g.units),
+                backgroundColor: "#dc2626",
+                borderRadius: 6,
+              },
+            ],
+          }}
+          options={{
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+          }}
+        />
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-bold">Fresh Score เฉลี่ยต่อกรุ๊ป</h2>
+        <div className="mx-auto max-w-60">
+          <Doughnut
+            data={{
+              labels: groupLabels,
+              datasets: [
+                {
+                  data: data.groups.map((g) => g.avgFreshScore),
+                  backgroundColor: ["#dc2626", "#b91c1c", "#3b82f6", "#1d4ed8", "#10b981", "#047857", "#a855f7", "#7e22ce"],
+                },
+              ],
+            }}
+            options={{ plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } } }}
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-bold">สรุปรายกรุ๊ป</h2>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
+              <th className="py-2">กรุ๊ป</th>
+              <th className="py-2 text-right">ถุง</th>
+              <th className="py-2 text-right">cc</th>
+              <th className="py-2 text-right">Fresh Score</th>
+              <th className="py-2 text-right">ใกล้หมดอายุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.groups.map((g) => (
+              <tr key={g.bloodGroup} className="border-b border-slate-100 last:border-0">
+                <td className="py-2">
+                  <BloodGroupBadge group={g.bloodGroup} />
+                </td>
+                <td className={`py-2 text-right font-semibold ${g.units < 3 ? "text-red-600" : ""}`}>{g.units}</td>
+                <td className="py-2 text-right text-slate-500">{g.volumeCc.toLocaleString()}</td>
+                <td className="py-2 text-right">{g.units ? g.avgFreshScore : "-"}</td>
+                <td className={`py-2 text-right ${g.nearExpiry > 0 ? "font-semibold text-amber-600" : "text-slate-400"}`}>
+                  {g.nearExpiry || "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }

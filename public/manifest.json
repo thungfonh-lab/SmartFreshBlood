@@ -1,0 +1,18 @@
+{
+  "name": "Smart Fresh Blood",
+  "short_name": "FreshBlood",
+  "description": "ระบบบริหารคลังเลือดสดและวางแผนผู้ป่วยธาลัสซีเมีย",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#dc2626",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
