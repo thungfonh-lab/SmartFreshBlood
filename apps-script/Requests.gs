@@ -17,8 +17,11 @@ function toRequestJson(r) {
     items: items,
     status: String(r.status),
     createdAt: String(r.createdAt || ""),
+    fulfilledUnits: Number(r.fulfilledUnits) || 0,
   };
 }
+
+var REQUEST_STATUSES = ["PENDING", "PARTIAL", "FULFILLED", "CANCELLED"];
 
 function getRequests() {
   return readAll(SHEET_REQUESTS, REQUEST_HEADERS)
@@ -53,6 +56,7 @@ function createRequest(input) {
     itemsJson: JSON.stringify(input.items),
     status: "PENDING",
     createdAt: new Date().toISOString(),
+    fulfilledUnits: 0,
   };
   appendRows(SHEET_REQUESTS, [
     REQUEST_HEADERS.map(function (h) {
@@ -61,4 +65,48 @@ function createRequest(input) {
   ]);
   audit("REQUEST_CREATE", "สร้างใบขอเลือด " + requestNo + " (" + input.items.length + " รายการ)", input.requestedBy);
   return toRequestJson(created);
+}
+
+/** อัปเดตความคืบหน้าใบขอเลือด (จำนวนที่ได้รับจริง + สถานะ) */
+function updateRequestFulfillment(input) {
+  if (!input.requestId) throw new Error("ไม่พบเลขที่ใบขอเลือด");
+  var rows = readAll(SHEET_REQUESTS, REQUEST_HEADERS);
+  var target = rows.filter(function (r) {
+    return String(r.requestId) === String(input.requestId);
+  })[0];
+  if (!target) throw new Error("ไม่พบใบขอเลือด " + input.requestId);
+
+  var items = [];
+  try {
+    items = JSON.parse(String(target.itemsJson || "[]"));
+  } catch (ignored) {}
+  var totalRequested = items.reduce(function (s, it) {
+    return s + (Number(it.units) || 0);
+  }, 0);
+
+  var fulfilledUnits = Math.max(0, Number(input.fulfilledUnits) || 0);
+  var status = input.status;
+  if (!status || REQUEST_STATUSES.indexOf(status) < 0) {
+    status = fulfilledUnits <= 0 ? "PENDING" : fulfilledUnits >= totalRequested ? "FULFILLED" : "PARTIAL";
+  }
+
+  var updated = {
+    requestId: String(target.requestId),
+    requestNo: String(target.requestNo),
+    requestDate: toIsoDateString(target.requestDate),
+    requestedTo: String(target.requestedTo || ""),
+    requestedBy: String(target.requestedBy || ""),
+    note: String(target.note || ""),
+    itemsJson: String(target.itemsJson || "[]"),
+    status: status,
+    createdAt: String(target.createdAt || ""),
+    fulfilledUnits: fulfilledUnits,
+  };
+  updateRow(SHEET_REQUESTS, target._row, REQUEST_HEADERS, updated);
+  audit(
+    "REQUEST_FULFILL",
+    "ใบขอเลือด " + target.requestNo + " → " + status + " (" + fulfilledUnits + "/" + totalRequested + " ยูนิต)",
+    input.by || ""
+  );
+  return toRequestJson(updated);
 }

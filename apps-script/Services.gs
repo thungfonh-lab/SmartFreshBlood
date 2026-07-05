@@ -21,7 +21,7 @@ function getDashboard() {
       return u.bloodGroup === g;
     });
     var scores = list.map(function (u) {
-      return computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate));
+      return computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate), new Date());
     });
     var sum = scores.reduce(function (a, b) {
       return a + b;
@@ -34,13 +34,13 @@ function getDashboard() {
       }, 0),
       avgFreshScore: scores.length ? Math.round(sum / scores.length) : 0,
       nearExpiry: list.filter(function (u) {
-        return daysUntilExpiry(toIsoDateString(u.expiryDate)) <= 7;
+        return daysUntilExpiry(toIsoDateString(u.expiryDate), new Date()) <= 7;
       }).length,
     };
   });
 
   var allScores = avail.map(function (u) {
-    return computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate));
+    return computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate), new Date());
   });
   var totalScore = allScores.reduce(function (a, b) {
     return a + b;
@@ -48,7 +48,7 @@ function getDashboard() {
 
   function countExpiring(maxDays) {
     return avail.filter(function (u) {
-      return daysUntilExpiry(toIsoDateString(u.expiryDate)) <= maxDays;
+      return daysUntilExpiry(toIsoDateString(u.expiryDate), new Date()) <= maxDays;
     }).length;
   }
 
@@ -146,7 +146,7 @@ function issueBlood(input) {
   } else {
     var candidates = avail
       .filter(function (u) {
-        return u.bloodGroup === input.bloodGroup && daysUntilExpiry(toIsoDateString(u.expiryDate)) >= 0;
+        return u.bloodGroup === input.bloodGroup && daysUntilExpiry(toIsoDateString(u.expiryDate), new Date()) >= 0;
       })
       .sort(function (a, b) {
         var ea = toIsoDateString(a.expiryDate);
@@ -198,7 +198,7 @@ function issueBlood(input) {
 function getExpiring() {
   var buckets = { today: [], in3Days: [], in7Days: [] };
   availableUnits().forEach(function (u) {
-    var d = daysUntilExpiry(toIsoDateString(u.expiryDate));
+    var d = daysUntilExpiry(toIsoDateString(u.expiryDate), new Date());
     if (d <= 0) buckets.today.push(toUnitJson(u));
     else if (d <= 3) buckets.in3Days.push(toUnitJson(u));
     else if (d <= 7) buckets.in7Days.push(toUnitJson(u));

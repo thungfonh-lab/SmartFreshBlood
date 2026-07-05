@@ -19,17 +19,17 @@ function addDaysIso(iso, days) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
 
-/** วันคงเหลือก่อนหมดอายุ (0 = วันนี้, ติดลบ = เลยแล้ว) */
-function daysUntilExpiry(expiryIso) {
-  return Math.round((atMidnight(parseIsoDate(expiryIso)).getTime() - atMidnight(new Date()).getTime()) / MS_PER_DAY);
+/** วันคงเหลือก่อนหมดอายุ (0 = วันนี้, ติดลบ = เลยแล้ว) — asOfDate ใช้คำนวณย้อนหลัง เช่น ณ เวลาที่จ่ายเลือด */
+function daysUntilExpiry(expiryIso, asOfDate) {
+  return Math.round((atMidnight(parseIsoDate(expiryIso)).getTime() - atMidnight(asOfDate || new Date()).getTime()) / MS_PER_DAY);
 }
 
-/** Fresh Score 0–100 */
-function computeFreshScore(collectIso, expiryIso) {
+/** Fresh Score 0–100 — asOfDate ใช้คำนวณย้อนหลัง (เช่น รายงาน Fresh Score ณ เวลาที่จ่ายเลือดจริง) */
+function computeFreshScore(collectIso, expiryIso, asOfDate) {
   var total = Math.max(
     1,
     Math.round((atMidnight(parseIsoDate(expiryIso)).getTime() - atMidnight(parseIsoDate(collectIso)).getTime()) / MS_PER_DAY)
   );
-  var remaining = daysUntilExpiry(expiryIso);
+  var remaining = daysUntilExpiry(expiryIso, asOfDate);
   return Math.min(100, Math.max(0, Math.round((remaining / total) * 100)));
 }

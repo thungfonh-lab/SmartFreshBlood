@@ -88,7 +88,10 @@ export default function DashboardPage() {
           }}
           options={{
             plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            scales: {
+              y: { beginAtZero: true, ticks: { precision: 0, color: "#94a3b8" }, grid: { color: "#94a3b833" } },
+              x: { ticks: { color: "#94a3b8" }, grid: { color: "#94a3b833" } },
+            },
           }}
         />
       </Card>
@@ -106,7 +109,7 @@ export default function DashboardPage() {
                 },
               ],
             }}
-            options={{ plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } } }}
+            options={{ plugins: { legend: { position: "bottom", labels: { boxWidth: 12, color: "#94a3b8" } } } }}
           />
         </div>
       </Card>

@@ -1,6 +1,8 @@
 import type {
   Appointment,
   ApptStatus,
+  AuditLogParams,
+  AuditLogResult,
   BloodGroup,
   BloodRequestDoc,
   BloodUnit,
@@ -9,12 +11,15 @@ import type {
   HospitalConfig,
   IssueInput,
   IssueRecord,
+  NotificationLogResult,
   Patient,
   ReceiveInput,
   ReportData,
   ReportType,
+  RequestFulfillmentInput,
   RequestItem,
   SearchResult,
+  StockSnapshotPoint,
   SystemConfig,
 } from "../types";
 
@@ -43,4 +48,9 @@ export interface BloodRepository {
   search(q: string): Promise<SearchResult>;
   getAllConfig(): Promise<SystemConfig>;
   saveConfig(entries: SystemConfig, by: string): Promise<SystemConfig>;
+  // Phase 3
+  getAuditLog(params: AuditLogParams): Promise<AuditLogResult>;
+  getNotificationLog(params: { from?: string; to?: string; page?: number; pageSize?: number }): Promise<NotificationLogResult>;
+  getStockSnapshot(bloodGroup: BloodGroup, days?: number): Promise<StockSnapshotPoint[]>;
+  updateRequestFulfillment(input: RequestFulfillmentInput): Promise<BloodRequestDoc>;
 }

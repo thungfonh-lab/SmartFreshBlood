@@ -2,23 +2,35 @@ import { addDays, daysUntilExpiry, freshScore, toIsoDate } from "../freshScore";
 import type {
   Appointment,
   ApptStatus,
+  AuditLogParams,
+  AuditLogResult,
+  AuditLogRow,
   BloodGroup,
   BloodRequestDoc,
   BloodUnit,
   DashboardData,
   DestroyLogRow,
+  ExecutiveComparisonRow,
   ExpiringData,
+  FreshScoreByGroup,
+  FreshScoreHistogramBucket,
   GroupSummary,
   HospitalConfig,
   IssueInput,
   IssueRecord,
+  MonthlyRollup,
+  NotificationLogResult,
+  NotificationLogRow,
   Patient,
   ReceiveInput,
   ReportData,
   ReportType,
+  RequestFulfillmentInput,
   RequestItem,
   SearchResult,
+  StockSnapshotPoint,
   SystemConfig,
+  TrendPoint,
 } from "../types";
 import { BLOOD_GROUPS } from "../types";
 import type { BloodRepository } from "./types";
@@ -341,10 +353,41 @@ export class MockRepository implements BloodRepository {
       items: input.items,
       status: "PENDING",
       createdAt: new Date().toISOString(),
+      fulfilledUnits: 0,
     };
     this.extra().requests.push(doc);
     this.persistExtra();
     return doc;
+  }
+
+  async updateRequestFulfillment(input: RequestFulfillmentInput): Promise<BloodRequestDoc> {
+    const r = this.extra().requests.find((x) => x.requestId === input.requestId);
+    if (!r) throw new Error(`ไม่พบใบขอเลือด ${input.requestId}`);
+    const totalRequested = r.items.reduce((s, it) => s + it.units, 0);
+    const fulfilledUnits = Math.max(0, input.fulfilledUnits);
+    r.fulfilledUnits = fulfilledUnits;
+    r.status = input.status ?? (fulfilledUnits <= 0 ? "PENDING" : fulfilledUnits >= totalRequested ? "FULFILLED" : "PARTIAL");
+    this.persistExtra();
+    return { ...r };
+  }
+
+  private monthlyRollup(to?: string): MonthlyRollup[] {
+    const end = to ? new Date(to) : new Date();
+    const months: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(end.getFullYear(), end.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const received = this.all();
+    const issued = this.extra().issueLog;
+    const destroyed = this.extra().destroyLog.filter((r) => r.action === "DESTROY");
+    return months.map((m) => {
+      const recvCount = received.filter((u) => u.receivedAt.slice(0, 7) === m).length;
+      const issCount = issued.filter((r) => r.issuedAt.slice(0, 7) === m).length;
+      const destCount = destroyed.filter((r) => r.at.slice(0, 7) === m).length;
+      const wastagePct = destCount + issCount > 0 ? Math.round((destCount / (destCount + issCount)) * 1000) / 10 : 0;
+      return { month: m, received: recvCount, issued: issCount, destroyed: destCount, wastagePct };
+    });
   }
 
   async getReport(type: ReportType, from?: string, to?: string): Promise<ReportData> {
@@ -357,7 +400,98 @@ export class MockRepository implements BloodRepository {
     if (type === "receive")
       return { type, from, to, generatedAt, rows: this.all().filter((u) => inRange(u.receivedAt)) };
     if (type === "issue") return { type, from, to, generatedAt, rows: this.extra().issueLog.filter((r) => inRange(r.issuedAt)) };
-    return { type, from, to, generatedAt, rows: this.extra().destroyLog.filter((r) => inRange(r.at)) };
+    if (type === "destroy") return { type, from, to, generatedAt, rows: this.extra().destroyLog.filter((r) => inRange(r.at)) };
+
+    if (type === "movement") {
+      const received = this.all().filter((u) => inRange(u.receivedAt));
+      const issued = this.extra().issueLog.filter((r) => inRange(r.issuedAt));
+      const destroyed = this.extra().destroyLog.filter((r) => r.action === "DESTROY" && inRange(r.at));
+      const transactions = [...issued].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+      return {
+        type,
+        from,
+        to,
+        generatedAt,
+        movementKpi: { received: received.length, issued: issued.length, expired: destroyed.length, remaining: this.available().length },
+        monthly: this.monthlyRollup(to),
+        transactions,
+      };
+    }
+
+    if (type === "freshscore") {
+      const issued = this.extra().issueLog.filter((r) => inRange(r.issuedAt));
+      const unitsById = new Map(this.all().map((u) => [u.unitId, u]));
+      const scored = issued
+        .map((r) => {
+          const u = unitsById.get(r.unitId);
+          if (!u) return null;
+          return { bloodGroup: r.bloodGroup, score: freshScore(u, new Date(r.issuedAt)) };
+        })
+        .filter((x): x is { bloodGroup: BloodGroup; score: number } => !!x);
+
+      const bucketDefs = [
+        { bucket: "0-20", min: 0, max: 20 },
+        { bucket: "21-40", min: 21, max: 40 },
+        { bucket: "41-60", min: 41, max: 60 },
+        { bucket: "61-80", min: 61, max: 80 },
+        { bucket: "81-100", min: 81, max: 100 },
+      ];
+      const histogram: FreshScoreHistogramBucket[] = bucketDefs.map((b) => ({
+        bucket: b.bucket,
+        count: scored.filter((s) => s.score >= b.min && s.score <= b.max).length,
+      }));
+      const byGroup: FreshScoreByGroup[] = BLOOD_GROUPS.map((g) => {
+        const arr = scored.filter((s) => s.bloodGroup === g).map((s) => s.score);
+        return { bloodGroup: g, avgScore: arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0 };
+      });
+      const avgAtIssueTime = scored.length ? Math.round(scored.reduce((a, s) => a + s.score, 0) / scored.length) : 0;
+      const dashboard = await this.getDashboard();
+      return { type, from, to, generatedAt, avgCurrentStock: dashboard.avgFreshScore, avgAtIssueTime, histogram, byGroup };
+    }
+
+    // executive
+    const received = this.all().filter((u) => inRange(u.receivedAt)).length;
+    const issued = this.extra().issueLog.filter((r) => inRange(r.issuedAt)).length;
+    const destroyed = this.extra().destroyLog.filter((r) => r.action === "DESTROY" && inRange(r.at)).length;
+    const requests = this.extra().requests.filter((r) => inRange(r.requestDate));
+    const requestedTotal = requests.reduce((s, r) => s + r.items.reduce((s2, it) => s2 + it.units, 0), 0);
+    const fulfilledTotal = requests.reduce((s, r) => s + r.fulfilledUnits, 0);
+
+    const utilizationRate = received > 0 ? Math.round((issued / received) * 1000) / 10 : 0;
+    const wastageRate = destroyed + issued > 0 ? Math.round((destroyed / (destroyed + issued)) * 1000) / 10 : 0;
+    const fulfillmentRate = requestedTotal > 0 ? Math.round((fulfilledTotal / requestedTotal) * 1000) / 10 : 0;
+
+    const roll = this.monthlyRollup(to);
+    const trendUtilization: TrendPoint[] = roll.map((m) => ({
+      month: m.month,
+      value: m.received > 0 ? Math.round((m.issued / m.received) * 1000) / 10 : 0,
+    }));
+    const trendWastage: TrendPoint[] = roll.map((m) => ({ month: m.month, value: m.wastagePct }));
+
+    const thisM = roll[roll.length - 1];
+    const lastM = roll[roll.length - 2] ?? { received: 0, issued: 0, wastagePct: 0, destroyed: 0, month: "" };
+    const thisUtil = thisM.received > 0 ? Math.round((thisM.issued / thisM.received) * 1000) / 10 : 0;
+    const lastUtil = lastM.received > 0 ? Math.round((lastM.issued / lastM.received) * 1000) / 10 : 0;
+
+    const cmpRow = (metric: string, thisVal: number, lastVal: number, higherIsBetter: boolean): ExecutiveComparisonRow => {
+      const delta = Math.round((thisVal - lastVal) * 10) / 10;
+      const improved = higherIsBetter ? delta >= 0 : delta <= 0;
+      return { metric, thisMonth: thisVal, lastMonth: lastVal, delta, status: improved ? "ดีขึ้น" : "ต้องแก้ไข" };
+    };
+
+    const dashboard = await this.getDashboard();
+    return {
+      type,
+      from,
+      to,
+      generatedAt,
+      execKpi: { totalStock: dashboard.totalUnits, utilizationRate, wastageRate, fulfillmentRate },
+      trend: { utilization: trendUtilization, wastage: trendWastage },
+      comparison: [
+        cmpRow("Utilization Rate (%)", thisUtil, lastUtil, true),
+        cmpRow("Wastage Rate (%)", thisM.wastagePct, lastM.wastagePct, false),
+      ],
+    };
   }
 
   async getConfig(): Promise<HospitalConfig> {
@@ -401,6 +535,124 @@ export class MockRepository implements BloodRepository {
     this.persistExtra();
     return this.getAllConfig();
   }
+
+  async getAuditLog(params: AuditLogParams): Promise<AuditLogResult> {
+    const all = generateFakeAuditLog();
+    const users = Array.from(new Set(all.filter((r) => r.user).map((r) => r.user))).sort();
+    const filtered = all.filter((r) => {
+      if ((params.from || params.to) && !inMockRange(r.timestamp, params.from, params.to)) return false;
+      if (params.user && r.user !== params.user) return false;
+      if (params.channel && r.channel !== params.channel) return false;
+      return true;
+    });
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 50;
+    const start = (page - 1) * pageSize;
+    return { rows: filtered.slice(start, start + pageSize), total: filtered.length, page, pageSize, users };
+  }
+
+  async getNotificationLog(params: { from?: string; to?: string; page?: number; pageSize?: number }): Promise<NotificationLogResult> {
+    const all = generateFakeNotificationLog();
+    const filtered = all.filter((r) => !(params.from || params.to) || inMockRange(r.timestamp, params.from, params.to));
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 50;
+    const start = (page - 1) * pageSize;
+    return { rows: filtered.slice(start, start + pageSize), total: filtered.length, page, pageSize };
+  }
+
+  async getStockSnapshot(bloodGroup: BloodGroup, days = 7): Promise<StockSnapshotPoint[]> {
+    const current = this.available().filter((u) => u.bloodGroup === bloodGroup);
+    const baseCount = current.length;
+    const baseScores = current.map((u) => freshScore(u));
+    const baseAvg = baseScores.length ? Math.round(baseScores.reduce((a, b) => a + b, 0) / baseScores.length) : 50;
+    const today = todayIso();
+    const points: StockSnapshotPoint[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = addDays(today, -i);
+      // ข้อมูลจำลอง: แกว่งเล็กน้อยรอบค่าปัจจุบัน (ของจริงจะสะสมทีละวันหลัง deploy)
+      const wobble = ((i * 7) % 5) - 2;
+      points.push({
+        date,
+        unitCount: Math.max(0, baseCount + wobble),
+        totalVolumeCc: Math.max(0, baseCount + wobble) * 350,
+        avgFreshScore: Math.min(100, Math.max(0, baseAvg + wobble * 2)),
+      });
+    }
+    return points;
+  }
+}
+
+function inMockRange(iso: string, from?: string, to?: string): boolean {
+  const d = iso.slice(0, 10);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+const FAKE_STAFF = ["เจ้าหน้าที่ ก.", "เจ้าหน้าที่ ข.", "นักเทคนิค ค.", "หัวหน้างาน ง."];
+const FAKE_ACTIONS: { action: string; detail: string }[] = [
+  { action: "RECEIVE", detail: "รับเลือด 3 ถุง กรุ๊ป O+" },
+  { action: "ISSUE", detail: "จ่ายเลือด 2 ถุง (GENERAL) ให้ ตึกอายุรกรรม" },
+  { action: "DESTROY", detail: "ทำลายถุง U00012 เหตุผล: หมดอายุ" },
+  { action: "PATIENT_ADD", detail: "เพิ่มผู้ป่วย HN 55501 กรุ๊ป B+" },
+  { action: "CONFIG_SAVE", detail: "แก้ไขค่าตั้ง: hospitalName" },
+  { action: "REQUEST_CREATE", detail: "สร้างใบขอเลือด SFB-20260701-001" },
+];
+
+/** สร้างประวัติ Audit Log จำลอง — คงที่ทุกครั้งที่เรียก (ไม่ใช้ Math.random) เพื่อให้ UI ทดสอบซ้ำได้ */
+function generateFakeAuditLog(): AuditLogRow[] {
+  const today = todayIso();
+  const rows: AuditLogRow[] = [];
+  for (let i = 0; i < 40; i++) {
+    const daysAgo = Math.floor(i / 2);
+    const spec = FAKE_ACTIONS[i % FAKE_ACTIONS.length];
+    const isSystem = spec.action === "NOTIFY_DAILY" || spec.action === "SETUP";
+    const user = isSystem ? "" : FAKE_STAFF[i % FAKE_STAFF.length];
+    const date = addDays(today, -daysAgo);
+    rows.push({
+      timestamp: `${date}T${String(8 + (i % 10)).padStart(2, "0")}:${String((i * 7) % 60).padStart(2, "0")}:00.000Z`,
+      action: spec.action,
+      detail: spec.detail,
+      user,
+      channel: user ? "WEB" : "SYSTEM",
+    });
+  }
+  // เพิ่มรายการระบบ (NOTIFY_DAILY) ทุกวันย้อนหลัง 10 วัน
+  for (let i = 0; i < 10; i++) {
+    const date = addDays(today, -i);
+    rows.push({
+      timestamp: `${date}T07:00:00.000Z`,
+      action: "NOTIFY_DAILY",
+      detail: "ส่งสรุปประจำวัน (LINE=true Email=true)",
+      user: "",
+      channel: "SYSTEM",
+    });
+  }
+  return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+}
+
+/** สร้างประวัติการแจ้งเตือนจำลอง ~10 วันย้อนหลัง */
+function generateFakeNotificationLog(): NotificationLogRow[] {
+  const today = todayIso();
+  const rows: NotificationLogRow[] = [];
+  for (let i = 0; i < 10; i++) {
+    const date = addDays(today, -i);
+    rows.push({
+      timestamp: `${date}T07:00:00.000Z`,
+      channel: "LINE",
+      recipient: "กลุ่มไลน์คลังเลือด",
+      summary: "🩸 สรุปคลังเลือดประจำวัน...",
+      success: i !== 3, // จำลองว่ามีวันหนึ่งส่งไม่สำเร็จ
+    });
+    rows.push({
+      timestamp: `${date}T07:00:05.000Z`,
+      channel: "EMAIL",
+      recipient: "bloodbank@example.go.th",
+      summary: "[Smart Fresh Blood] สรุปคลังเลือดประจำวัน",
+      success: true,
+    });
+  }
+  return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
 const EXTRA_KEY = "sfb-mock-extra";
@@ -450,7 +702,23 @@ function loadExtra(): MockExtra {
     appointments: [
       { apptId: "AP0001", patientId: "P0001", apptDate: addDays(today, 5), unitsNeeded: 2, status: "PLANNED" },
     ],
-    requests: [],
+    requests: [
+      {
+        requestId: "RQ_SEED1",
+        requestNo: `SFB-${today.replace(/-/g, "")}-001`,
+        requestDate: today,
+        requestedTo: "ภาคบริการโลหิตแห่งชาติ",
+        requestedBy: "เจ้าหน้าที่ตัวอย่าง",
+        note: "",
+        items: [
+          { bloodGroup: "O+", component: "PRC", units: 10 },
+          { bloodGroup: "B+", component: "PRC", units: 5 },
+        ],
+        status: "PARTIAL",
+        createdAt: new Date().toISOString(),
+        fulfilledUnits: 8,
+      },
+    ],
     issueLog: [],
     destroyLog: [],
   };

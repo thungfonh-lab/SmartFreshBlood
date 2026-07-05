@@ -11,6 +11,8 @@ const MENU_ITEMS = [
   { href: "/requests", icon: "📄", title: "ใบขอเลือด", desc: "สร้างและพิมพ์ใบขอเลือด (ทางการ)" },
   { href: "/reports", icon: "📑", title: "รายงาน", desc: "รายงานทางการ พิมพ์/บันทึก PDF" },
   { href: "/destroy", icon: "🗑️", title: "ทำลาย / คืนเลือด", desc: "บันทึกการทำลายและคืนเลือดพร้อมเหตุผล" },
+  { href: "/audit", icon: "📜", title: "ประวัติการใช้งาน", desc: "Audit Log — ทุกการกระทำในระบบ" },
+  { href: "/notifications", icon: "🔔", title: "การแจ้งเตือน", desc: "เปิด/ปิดกฎแจ้งเตือน และประวัติการส่ง" },
   { href: "/settings", icon: "⚙️", title: "ตั้งค่าระบบ", desc: "ชื่อหน่วยงาน เกณฑ์คลัง และการแจ้งเตือน" },
 ];
 
@@ -25,14 +27,14 @@ export default function MenuPage() {
               <span className="text-3xl">{m.icon}</span>
               <div>
                 <p className="font-bold">{m.title}</p>
-                <p className="text-sm text-slate-500">{m.desc}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{m.desc}</p>
               </div>
-              <span className="ml-auto text-slate-300">›</span>
+              <span className="ml-auto text-slate-300 dark:text-slate-600">›</span>
             </Card>
           </Link>
         ))}
       </div>
-      <p className="pt-2 text-center text-xs text-slate-400">
+      <p className="pt-2 text-center text-xs text-slate-400 dark:text-slate-500">
         Smart Fresh Blood v2.0 · {isMockMode() ? "โหมดข้อมูลตัวอย่าง" : "เชื่อมต่อ Google Sheets"}
       </p>
     </div>

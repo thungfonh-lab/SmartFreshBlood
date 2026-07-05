@@ -14,6 +14,8 @@ function setupSheets() {
     { name: SHEET_APPTS, headers: APPT_HEADERS },
     { name: SHEET_REQUESTS, headers: REQUEST_HEADERS },
     { name: SHEET_DESTROY, headers: DESTROY_HEADERS },
+    { name: SHEET_NOTIFY_LOG, headers: NOTIFY_LOG_HEADERS },
+    { name: SHEET_SNAPSHOT, headers: SNAPSHOT_HEADERS },
   ];
 
   sheets.forEach(function (def) {
@@ -37,6 +39,12 @@ function setupSheets() {
     ["lineChannelToken", ""],
     ["lineTargetId", ""],
     ["notifyEmail", ""],
+    ["notifyNearExpiry", "true"],
+    ["notifyLowStock", "true"],
+    ["notifyCritical", "true"],
+    ["notifyApptReminder", "true"],
+    ["notifyDailySummary", "true"],
+    ["apptReminderDays", 3],
   ];
   var missing = defaults.filter(function (d) {
     return !existingKeys[d[0]];

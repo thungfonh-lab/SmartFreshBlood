@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getRepository } from "@/lib/repository";
 import { daysUntilExpiry, formatThaiDate, freshScore } from "@/lib/freshScore";
 import type { SearchResult, UnitStatus } from "@/lib/types";
@@ -20,7 +21,16 @@ function formatDateTime(iso?: string): string {
 }
 
 export default function SearchPage() {
-  const [q, setQ] = useState("");
+  return (
+    <Suspense fallback={<Spinner />}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+function SearchPageInner() {
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +73,7 @@ export default function SearchPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="เช่น U00012, สมชาย, 12345"
-          className="w-full rounded-2xl border border-slate-300 bg-white py-3.5 pl-12 pr-4 text-base shadow-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+          className="w-full rounded-2xl border border-slate-300 bg-white py-3.5 pl-12 pr-4 text-base shadow-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
         />
       </div>
 

@@ -3,6 +3,8 @@ import { cached, invalidate } from "../cache";
 import type {
   Appointment,
   ApptStatus,
+  AuditLogParams,
+  AuditLogResult,
   BloodGroup,
   BloodRequestDoc,
   BloodUnit,
@@ -11,12 +13,15 @@ import type {
   HospitalConfig,
   IssueInput,
   IssueRecord,
+  NotificationLogResult,
   Patient,
   ReceiveInput,
   ReportData,
   ReportType,
+  RequestFulfillmentInput,
   RequestItem,
   SearchResult,
+  StockSnapshotPoint,
   SystemConfig,
 } from "../types";
 import type { BloodRepository } from "./types";
@@ -126,6 +131,43 @@ export class GasRepository implements BloodRepository {
   async saveConfig(entries: SystemConfig, by: string): Promise<SystemConfig> {
     const result = await gasRequest<SystemConfig>(this.baseUrl, "configSave", { method: "POST", body: { entries, by } });
     invalidate("config", "dashboard", "appointments"); // เกณฑ์ต่างๆ กระทบการคำนวณ
+    return result;
+  }
+
+  getAuditLog(params: AuditLogParams): Promise<AuditLogResult> {
+    // ไม่ cache — หน้า filter สดต้องเห็นข้อมูลล่าสุดเสมอ
+    return gasRequest<AuditLogResult>(this.baseUrl, "auditLog", {
+      params: {
+        from: params.from ?? "",
+        to: params.to ?? "",
+        user: params.user ?? "",
+        channel: params.channel ?? "",
+        page: String(params.page ?? 1),
+        pageSize: String(params.pageSize ?? 50),
+      },
+    });
+  }
+
+  getNotificationLog(params: { from?: string; to?: string; page?: number; pageSize?: number }): Promise<NotificationLogResult> {
+    return gasRequest<NotificationLogResult>(this.baseUrl, "notificationLog", {
+      params: {
+        from: params.from ?? "",
+        to: params.to ?? "",
+        page: String(params.page ?? 1),
+        pageSize: String(params.pageSize ?? 50),
+      },
+    });
+  }
+
+  getStockSnapshot(bloodGroup: BloodGroup, days = 7): Promise<StockSnapshotPoint[]> {
+    return cached(`stockSnapshot:${bloodGroup}:${days}`, TTL, () =>
+      gasRequest<StockSnapshotPoint[]>(this.baseUrl, "stockSnapshot", { params: { bloodGroup, days: String(days) } })
+    );
+  }
+
+  async updateRequestFulfillment(input: RequestFulfillmentInput): Promise<BloodRequestDoc> {
+    const result = await gasRequest<BloodRequestDoc>(this.baseUrl, "requestFulfill", { method: "POST", body: input });
+    invalidate("requests", "report");
     return result;
   }
 }

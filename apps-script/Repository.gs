@@ -11,14 +11,18 @@ var SHEET_PATIENTS = "Patients";
 var SHEET_APPTS = "Appointments";
 var SHEET_REQUESTS = "Requests";
 var SHEET_DESTROY = "DestroyLog";
+var SHEET_NOTIFY_LOG = "NotificationLog";
+var SHEET_SNAPSHOT = "StockSnapshot";
 
 var UNIT_HEADERS = ["unitId", "bloodGroup", "component", "volumeCc", "collectDate", "expiryDate", "status", "receivedAt", "receivedBy"];
 var ISSUE_HEADERS = ["issueId", "unitId", "bloodGroup", "volumeCc", "issueType", "issuedTo", "issuedAt", "issuedBy"];
 var AUDIT_HEADERS = ["timestamp", "action", "detail", "user"];
 var PATIENT_HEADERS = ["patientId", "hn", "name", "bloodGroup", "unitsPerVisit", "frequencyDays", "note", "createdAt"];
 var APPT_HEADERS = ["apptId", "patientId", "apptDate", "unitsNeeded", "status", "createdAt"];
-var REQUEST_HEADERS = ["requestId", "requestNo", "requestDate", "requestedTo", "requestedBy", "note", "itemsJson", "status", "createdAt"];
+var REQUEST_HEADERS = ["requestId", "requestNo", "requestDate", "requestedTo", "requestedBy", "note", "itemsJson", "status", "createdAt", "fulfilledUnits"];
 var DESTROY_HEADERS = ["logId", "unitId", "bloodGroup", "volumeCc", "action", "reason", "at", "by"];
+var NOTIFY_LOG_HEADERS = ["timestamp", "channel", "recipient", "summary", "success"];
+var SNAPSHOT_HEADERS = ["timestamp", "bloodGroup", "unitCount", "totalVolumeCc", "avgFreshScore"];
 
 function getSheet(name) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
@@ -76,13 +80,29 @@ function readConfig() {
     lineChannelToken: "",
     lineTargetId: "",
     notifyEmail: "",
+    notifyNearExpiry: "true",
+    notifyLowStock: "true",
+    notifyCritical: "true",
+    notifyApptReminder: "true",
+    notifyDailySummary: "true",
+    apptReminderDays: 3,
   };
   try {
     readAll(SHEET_CONFIG, ["key", "value"]).forEach(function (r) {
-      if (r.key) config[r.key] = isNaN(Number(r.value)) ? r.value : Number(r.value);
+      if (!r.key) return;
+      var raw = String(r.value === undefined || r.value === null ? "" : r.value).trim();
+      // Number("") === 0 ทำให้ค่าว่างถูกแปลงเป็น 0 โดยไม่ตั้งใจ ต้องกันไว้
+      config[r.key] = raw !== "" && !isNaN(Number(raw)) ? Number(raw) : raw;
     });
   } catch (ignored) {}
   return config;
+}
+
+/** อ่านค่า config แบบ boolean ปลอดภัย (string "false" ต้องไม่กลาย true เพราะเป็น non-empty string) */
+function configBool(config, key, defaultVal) {
+  var v = config[key];
+  if (v === undefined || v === null || v === "") return defaultVal;
+  return String(v) === "true" || v === true;
 }
 
 function audit(action, detail, user) {

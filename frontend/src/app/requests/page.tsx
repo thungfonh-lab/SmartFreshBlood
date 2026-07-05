@@ -2,13 +2,83 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getRepository } from "@/lib/repository";
-import type { BloodGroup, BloodRequestDoc, HospitalConfig, RequestItem } from "@/lib/types";
+import type { BloodGroup, BloodRequestDoc, HospitalConfig, RequestItem, RequestStatus } from "@/lib/types";
 import { BLOOD_GROUPS } from "@/lib/types";
 import { Card, EmptyState, ErrorBox, PageTitle, Spinner } from "@/components/ui";
 import { DocFooter, DocHeader, DocTable, PrintButton, SignatureBlock } from "@/components/FormalDoc";
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100";
+
+const STATUS_BADGE: Record<RequestStatus, { text: string; cls: string }> = {
+  PENDING: { text: "รอดำเนินการ", cls: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  PARTIAL: { text: "ได้รับบางส่วน", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300" },
+  FULFILLED: { text: "ได้รับครบ", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300" },
+  CANCELLED: { text: "ยกเลิก", cls: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" },
+};
+
+function RequestRow({ r, onView, onUpdated }: { r: BloodRequestDoc; onView: () => void; onUpdated: () => void }) {
+  const totalRequested = r.items.reduce((s, it) => s + it.units, 0);
+  const [editing, setEditing] = useState(false);
+  const [fulfilledUnits, setFulfilledUnits] = useState(r.fulfilledUnits);
+  const [saving, setSaving] = useState(false);
+  const status = STATUS_BADGE[(r.status as RequestStatus) ?? "PENDING"] ?? STATUS_BADGE.PENDING;
+
+  async function save() {
+    setSaving(true);
+    try {
+      await getRepository().updateRequestFulfillment({ requestId: r.requestId, fulfilledUnits, by: "หน้าใบขอเลือด" });
+      setEditing(false);
+      onUpdated();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2">
+        <button onClick={onView} className="min-w-0 flex-1 text-left">
+          <p className="text-sm font-bold">{r.requestNo}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {r.items.map((it) => `${it.bloodGroup} ${it.component}×${it.units}`).join(", ")} · ผู้ขอ {r.requestedBy}
+          </p>
+        </button>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${status.cls}`}>{status.text}</span>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs dark:border-slate-700">
+        <span className="text-slate-500 dark:text-slate-400">
+          ได้รับแล้ว {r.fulfilledUnits}/{totalRequested} ยูนิต
+        </span>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0}
+              max={totalRequested}
+              value={fulfilledUnits}
+              onChange={(e) => setFulfilledUnits(Number(e.target.value))}
+              className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-center dark:border-slate-600 dark:bg-slate-800"
+            />
+            <button onClick={save} disabled={saving} className="rounded-lg bg-red-600 px-2.5 py-1 font-semibold text-white disabled:opacity-50">
+              บันทึก
+            </button>
+            <button onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-2.5 py-1 dark:border-slate-600">
+              ยกเลิก
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setEditing(true)} className="font-semibold text-red-600 dark:text-red-400">
+            อัปเดตสถานะ
+          </button>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 export default function RequestsPage() {
   const [requests, setRequests] = useState<BloodRequestDoc[] | null>(null);
@@ -180,17 +250,7 @@ export default function RequestsPage() {
       {requests && requests.length === 0 && <EmptyState message="ยังไม่มีใบขอเลือด" />}
       <div className="space-y-2">
         {requests?.map((r) => (
-          <button key={r.requestId} onClick={() => setViewing(r)} className="block w-full text-left">
-            <Card className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold">{r.requestNo}</p>
-                <p className="text-xs text-slate-500">
-                  {r.items.map((it) => `${it.bloodGroup} ${it.component}×${it.units}`).join(", ")} · ผู้ขอ {r.requestedBy}
-                </p>
-              </div>
-              <span className="text-xs font-semibold text-slate-400">ดูเอกสาร ›</span>
-            </Card>
-          </button>
+          <RequestRow key={r.requestId} r={r} onView={() => setViewing(r)} onUpdated={load} />
         ))}
       </div>
     </div>

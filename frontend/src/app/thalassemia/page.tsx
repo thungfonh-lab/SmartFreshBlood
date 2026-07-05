@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getRepository } from "@/lib/repository";
 import { formatThaiDate, toIsoDate } from "@/lib/freshScore";
 import type { Appointment, BloodGroup, Patient, RiskLevel } from "@/lib/types";
@@ -17,6 +18,16 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100";
 
 export default function ThalassemiaPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ThalassemiaPageInner />
+    </Suspense>
+  );
+}
+
+function ThalassemiaPageInner() {
+  const searchParams = useSearchParams();
+  const [hnFilter, setHnFilter] = useState(() => searchParams.get("hn") ?? "");
   const [appointments, setAppointments] = useState<Appointment[] | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [error, setError] = useState("");
@@ -110,9 +121,21 @@ export default function ThalassemiaPage() {
 
   if (!appointments && !error) return <Spinner />;
 
+  const filteredAppointments = hnFilter ? (appointments ?? []).filter((a) => a.hn.includes(hnFilter)) : appointments;
+  const filteredPatients = hnFilter ? patients.filter((p) => p.hn.includes(hnFilter)) : patients;
+
   return (
     <div className="space-y-4">
       <PageTitle title="วางแผนธาลัสซีเมีย" subtitle="วันนัดรับเลือดและความพร้อมของเลือดสด" />
+
+      {hnFilter && (
+        <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-sm text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300">
+          <span>กำลังกรองตาม HN: {hnFilter}</span>
+          <button onClick={() => setHnFilter("")} className="font-semibold underline">
+            ล้างตัวกรอง
+          </button>
+        </div>
+      )}
 
       {error && <ErrorBox message={error} />}
       {success && <SuccessBox message={success} />}
@@ -224,10 +247,12 @@ export default function ThalassemiaPage() {
         </Card>
       )}
 
-      <h2 className="pt-1 text-sm font-bold text-slate-700">วันนัดที่กำลังจะถึง ({appointments?.length ?? 0})</h2>
-      {appointments && appointments.length === 0 && <EmptyState message="ยังไม่มีวันนัด กด “+ เพิ่มวันนัด” เพื่อเริ่มวางแผน" />}
+      <h2 className="pt-1 text-sm font-bold text-slate-700">วันนัดที่กำลังจะถึง ({filteredAppointments?.length ?? 0})</h2>
+      {filteredAppointments && filteredAppointments.length === 0 && (
+        <EmptyState message={hnFilter ? `ไม่พบวันนัดของ HN ${hnFilter}` : "ยังไม่มีวันนัด กด “+ เพิ่มวันนัด” เพื่อเริ่มวางแผน"} />
+      )}
       <div className="space-y-2">
-        {appointments?.map((a) => {
+        {filteredAppointments?.map((a) => {
           const risk = RISK_LABEL[a.riskLevel];
           return (
             <Card key={a.apptId}>
@@ -273,10 +298,12 @@ export default function ThalassemiaPage() {
         })}
       </div>
 
-      <h2 className="pt-1 text-sm font-bold text-slate-700">ทะเบียนผู้ป่วย ({patients.length})</h2>
-      {patients.length === 0 && <EmptyState message="ยังไม่มีผู้ป่วยในทะเบียน" />}
+      <h2 className="pt-1 text-sm font-bold text-slate-700">ทะเบียนผู้ป่วย ({filteredPatients.length})</h2>
+      {filteredPatients.length === 0 && (
+        <EmptyState message={hnFilter ? `ไม่พบผู้ป่วย HN ${hnFilter}` : "ยังไม่มีผู้ป่วยในทะเบียน"} />
+      )}
       <div className="space-y-2">
-        {patients.map((p) => (
+        {filteredPatients.map((p) => (
           <Card key={p.patientId} className="flex items-center gap-3">
             <BloodGroupBadge group={p.bloodGroup} />
             <div>

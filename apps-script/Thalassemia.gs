@@ -83,7 +83,7 @@ function getAppointments() {
   var totalCount = {};
   avail.forEach(function (u) {
     var g = String(u.bloodGroup);
-    var score = computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate));
+    var score = computeFreshScore(toIsoDateString(u.collectDate), toIsoDateString(u.expiryDate), new Date());
     totalCount[g] = (totalCount[g] || 0) + 1;
     if (score >= config.freshThreshold) freshCount[g] = (freshCount[g] || 0) + 1;
   });

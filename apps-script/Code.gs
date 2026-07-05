@@ -68,6 +68,42 @@ function handleRequest(e, body) {
       }
       case "configAll":
         return jsonResponse({ success: true, data: getAllConfigMasked() });
+      case "auditLog": {
+        var aFrom = e.parameter.from || "";
+        var aTo = e.parameter.to || "";
+        var aUser = e.parameter.user || "";
+        var aChannel = e.parameter.channel || "";
+        var aPage = Number(e.parameter.page || 1);
+        var aPageSize = Number(e.parameter.pageSize || 50);
+        return jsonResponse({
+          success: true,
+          data: cachedJson("auditLog:" + aFrom + ":" + aTo + ":" + aUser + ":" + aChannel + ":" + aPage + ":" + aPageSize, function () {
+            return getAuditLog(aFrom, aTo, aUser, aChannel, aPage, aPageSize);
+          }),
+        });
+      }
+      case "notificationLog": {
+        var nFrom = e.parameter.from || "";
+        var nTo = e.parameter.to || "";
+        var nPage = Number(e.parameter.page || 1);
+        var nPageSize = Number(e.parameter.pageSize || 50);
+        return jsonResponse({
+          success: true,
+          data: cachedJson("notificationLog:" + nFrom + ":" + nTo + ":" + nPage + ":" + nPageSize, function () {
+            return getNotificationLog(nFrom, nTo, nPage, nPageSize);
+          }),
+        });
+      }
+      case "stockSnapshot": {
+        var ssGroup = e.parameter.bloodGroup || "";
+        var ssDays = Number(e.parameter.days || 7);
+        return jsonResponse({
+          success: true,
+          data: cachedJson("stockSnapshot:" + ssGroup + ":" + ssDays, function () {
+            return getStockSnapshotRows(ssGroup, ssDays);
+          }),
+        });
+      }
 
       // ---------- POST (เขียนข้อมูล + bump cache version) ----------
       case "receive":
@@ -88,6 +124,8 @@ function handleRequest(e, body) {
         return writeAction(body, createRequest);
       case "configSave":
         return writeAction(body, saveConfigEntries);
+      case "requestFulfill":
+        return writeAction(body, updateRequestFulfillment);
 
       default:
         return jsonResponse({ success: false, error: "ไม่รู้จัก action: " + action });

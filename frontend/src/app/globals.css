@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark mode แบบสลับด้วยคลาส .dark บน <html> (ไม่ใช่แค่ตาม prefers-color-scheme) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-noto-thai), ui-sans-serif, system-ui, sans-serif;
   --font-document: var(--font-sarabun), var(--font-noto-thai), serif;
@@ -9,10 +12,11 @@ body {
   font-family: var(--font-sans);
 }
 
-/* เอกสารทางการ */
+/* เอกสารทางการ — พิมพ์เป็นเอกสารราชการ ต้องคงโทนสว่างเสมอไม่ว่าจะเปิด dark mode หรือไม่ */
 .formal-doc {
   font-family: var(--font-document);
   color: #000;
+  background: #fff;
 }
 
 @media print {
